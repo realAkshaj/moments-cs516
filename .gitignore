@@ -170,3 +170,25 @@ uploads/avatars/*
 logs/*
 !logs/.gitkeep
 whooshee
+
+
+# ML API Keys - NEVER COMMIT THESE!
+config/api_keys.py
+*.key
+.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+env/
+
+# VS Code
+.vscode/settings.json
+
+
+config/api_keys.py
+*.key
+.envconfig/api_keys.py
+*.key
+.env

@@ -2,6 +2,9 @@ from flask import Blueprint, abort, current_app, flash, redirect, render_templat
 from flask_login import current_user, login_required
 from sqlalchemy import func, select
 from sqlalchemy.orm import with_parent
+from sqlalchemy import or_
+from utils.azure_vision import vision_service
+import os
 
 from moments.core.extensions import db
 from moments.decorators import confirm_required, permission_required
@@ -57,13 +60,22 @@ def search():
     category = request.args.get('category', 'photo')
     page = request.args.get('page', 1, type=int)
     per_page = current_app.config['MOMENTS_SEARCH_RESULT_PER_PAGE']
-    # TODO: add SQLAlchemy 2.x support to Flask-Whooshee then update the following code
+    
     if category == 'user':
         pagination = User.query.whooshee_search(q).paginate(page=page, per_page=per_page)
     elif category == 'tag':
         pagination = Tag.query.whooshee_search(q).paginate(page=page, per_page=per_page)
     else:
-        pagination = Photo.query.whooshee_search(q).paginate(page=page, per_page=per_page)
+        # Enhanced photo search: search both description and ML tags
+        from sqlalchemy import or_
+        stmt = select(Photo).filter(
+            or_(
+                Photo.description.contains(q),
+                Photo.ml_tags.contains(q)
+            )
+        ).order_by(Photo.created_at.desc())
+        pagination = db.paginate(stmt, page=page, per_page=per_page)
+    
     results = pagination.items
     return render_template('main/search.html', q=q, results=results, pagination=pagination, category=category)
 
@@ -133,13 +145,34 @@ def upload():
         f.save(current_app.config['MOMENTS_UPLOAD_PATH'] / filename)
         filename_s = resize_image(f, filename, current_app.config['MOMENTS_PHOTO_SIZES']['small'])
         filename_m = resize_image(f, filename, current_app.config['MOMENTS_PHOTO_SIZES']['medium'])
+        
+        # Add ML processing here
+        try:
+            # Get full path to uploaded image
+            image_path = current_app.config['MOMENTS_UPLOAD_PATH'] / filename
+            
+            # Generate alt text and detect objects
+            alt_text = vision_service.generate_alt_text(str(image_path))
+            detected_objects = vision_service.detect_objects(str(image_path))
+            ml_tags = ','.join(detected_objects) if detected_objects else ''
+            
+        except Exception as e:
+            print(f"ML processing error: {e}")
+            alt_text = "Image description unavailable"
+            ml_tags = ''
+        
+        # Create photo with ML data
         photo = Photo(
-            filename=filename, filename_s=filename_s, filename_m=filename_m, author=current_user._get_current_object()
+            filename=filename, 
+            filename_s=filename_s, 
+            filename_m=filename_m, 
+            alt_text=alt_text,        # Add this
+            ml_tags=ml_tags,          # Add this
+            author=current_user._get_current_object()
         )
         db.session.add(photo)
         db.session.commit()
     return render_template('main/upload.html')
-
 
 @main_bp.route('/photo/<int:photo_id>')
 def show_photo(photo_id):

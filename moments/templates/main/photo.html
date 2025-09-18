@@ -10,7 +10,9 @@
   <div class="col-lg-8">
     <div class="photo">
       <a href="{{ url_for('.get_image', filename=photo.filename) }}" target="_blank">
-        <img class="img-fluid" src="{{ url_for('.get_image', filename=photo.filename_m) }}">
+        <img src="{{ url_for('main.get_image', filename=photo.filename) }}" 
+            alt="{{ photo.alt_text or photo.description or 'User uploaded image' }}" 
+            class="card-img-top">
       </a>
       <span class="photo-bottom"></span>
     </div>
